@@ -1,0 +1,113 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrahead %}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block content %}
+  <h1>{{ title }}</h1>
+  <form id="graph-form" method="get" data-url="{% url 'admin:exchange_rate_graph' %}">
+    <label for="currencies">Selecciona las monedas:</label><br>
+    {% for code, name in currency_options %}
+      {% if code != "EUR" %}  <!-- No mostrar EUR -->
+        <input type="checkbox" name="currencies" id="{{ code }}" value="{{ code }}">
+        <label for="{{ code }}">{{ name }}</label><br>
+      {% endif %}
+    {% endfor %}
+    <button type="submit" class="default">Generate Graph</button>
+  </form>
+
+  <canvas id="exchangeRateChart" width="400" height="200" style="display:none;"></canvas>
+
+  <script>
+    let exchangeChart = null;
+
+  document.getElementById('graph-form').addEventListener('submit', function(event) {
+    event.preventDefault();
+
+    const form = event.target;
+    const url = form.getAttribute('data-url');
+
+    let selectedCurrencies = Array.from(document.querySelectorAll('input[name="currencies"]:checked'))
+      .map(el => el.value)
+      .filter(currency => currency !== "EUR");
+
+    if (selectedCurrencies.length === 0) {
+      alert("Please select at least one currency.");
+      return;
+    }
+
+    let urlParams = new URLSearchParams();
+    selectedCurrencies.forEach(currency => urlParams.append("currencies", currency));
+
+    fetch(`${url}?${urlParams}`, {
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.error) {
+        alert(data.error);
+        return;
+      }
+
+      if (!data.labels || data.labels.length === 0) {
+        alert("No labels received. Please check the data.");
+        return;
+      }
+
+      // Limpiar y recrear el canvas
+      const canvasContainer = document.getElementById('exchangeRateChart').parentNode;
+      canvasContainer.innerHTML = '<canvas id="exchangeRateChart" width="400" height="200"></canvas>';
+      const canvas = document.getElementById('exchangeRateChart');
+      const ctx = canvas.getContext('2d');
+
+      const labels = data.labels;
+      const datasets = [];
+
+      for (const [currency, rates] of Object.entries(data.data)) {
+        const ratesMap = new Map(rates.map(rate => [rate[0], parseFloat(rate[1])]));
+        const dataPoints = labels.map(date => ratesMap.get(date) || null);
+
+        datasets.push({
+          label: currency,
+          data: dataPoints,
+          fill: false,
+          borderColor: getRandomColor(),
+          tension: 0.1
+        });
+      }
+
+      exchangeChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: datasets
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            title: {
+              display: true,
+              text: 'Historical Exchange Rates'
+            }
+          }
+        }
+      });
+    })
+    .catch(error => {
+      console.error('Error fetching exchange rate data:', error);
+      alert("Error fetching exchange rate data.");
+    });
+  });
+
+    function getRandomColor() {
+      return '#' + Math.floor(Math.random() * 16777215).toString(16);
+    }
+
+
+    function getRandomColor() {
+      return '#' + Math.floor(Math.random() * 16777215).toString(16);
+    }
+  </script>
+{% endblock %}
